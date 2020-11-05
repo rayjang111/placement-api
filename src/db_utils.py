@@ -188,6 +188,115 @@ class dbUtils():
 
         return self.placement_consolidation_host_status
 
+    def placement_consolidation_host_openstack(self, prvdType, zone_resource_id):
+
+        price_per_hour = pd.read_sql_query(" SELECT ammt FROM framework.tb_cost_template  \
+                                          ", self.engine
+                                           )
+        cost_multiplier = int(price_per_hour.iloc[0, 0])
+
+        ###consolidation data 호출
+        consolidation_status = pd.read_sql_query("\
+        select * from analytic_{prvdType}.placement_consolidation_status \
+         where time = (select max(time) from analytic_{prvdType}.placement_consolidation_status) \
+          and zone_resource_id= '{zone_resource_id}' ".format(prvdType=prvdType,
+                                                                    zone_resource_id=zone_resource_id),
+                                                 self.engine)
+
+        self.placement_consolidation_status = list()
+        consolidation_status.sort_values(by='number_migration')
+        previous_server_shutdown = min(consolidation_status['number_server_shutdown'])
+        total_hosts = max(consolidation_status['total_server'])
+        count = 1
+        for index, row in consolidation_status.iterrows():
+            data = dict()
+            data['label'] = '{count}안'.format(count=count)
+            count += 1
+            data['vm_move_count'] = row['number_migration']
+            data['recommendation_id'] = row['consolidation_id']
+            data['saving_host_count'] = [total_hosts, total_hosts - row['number_server_shutdown']]
+            data['safety_operation'] = [row['workload_stability'] - row['workload_stability_improved'],
+                                        row['workload_stability']]
+            data['total_power'] = [row['energy_consumption'] + row['energy_saved'], row['energy_consumption']]
+            data['saving_cost'] = [
+                row['energy_consumption'] * cost_multiplier + row['energy_saved'] * cost_multiplier,
+                row['energy_consumption'] * cost_multiplier]
+            self.placement_consolidation_status.append(data)
+
+        ### host status data 호출
+        host_status = pd.read_sql_query("\
+                select consolidation_id from analytic_{prvdType}.placement_host_status \
+                 where time = (select max(time) from analytic_{prvdType}.placement_host_status) \
+                  and zone_resource_id= '{zone_resource_id}' ".format(prvdType=prvdType,
+                                                                            zone_resource_id=zone_resource_id),
+                                        self.engine)
+
+        recommendation_ids = np.unique(host_status['consolidation_id'])
+        self.placement_host_status = list()
+        for recommendation_id in recommendation_ids:
+            host_status = pd.read_sql_query("\
+                    select * from analytic_{prvdType}.placement_host_status \
+                     where time = (select max(time) from analytic_{prvdType}.placement_host_status) \
+                      and zone_resource_id= '{zone_resource_id}' \
+                        and consolidation_id='{recommendation_id}'  ".format(prvdType=prvdType,
+                                                                             zone_resource_id=zone_resource_id,
+                                                                             recommendation_id=recommendation_id),
+                                            self.engine)
+            data = dict()
+            data['recommendation_id'] = recommendation_id
+            data['before'] = list()
+            data['after'] = list()
+            for index, row in host_status.iterrows():
+                before_data = dict()
+                before_data['label'] = row['host_name']
+                before_data['value'] = row['previous_health_score']
+                after_data = dict()
+                after_data['label'] = row['host_name']
+                after_data['value'] = row['host_health_score']
+                data['before'].append(before_data)
+                data['after'].append(after_data)
+            self.placement_host_status.append(data)
+
+        host_status = pd.read_sql_query("\
+        select consolidation_id from analytic_{prvdType}.placement_host_status \
+         where time = (select max(time) from analytic_{prvdType}.placement_host_status) \
+          and zone_resource_id= '{zone_resource_id}' ".format(prvdType=prvdType,
+                                                                    zone_resource_id=zone_resource_id),
+                                        self.engine)
+
+        recommendation_ids = np.unique(host_status['consolidation_id'])
+        self.placement_host_status = list()
+        for recommendation_id in recommendation_ids:
+            host_status = pd.read_sql_query("\
+            select * from analytic_{prvdType}.placement_host_status \
+             where time = (select max(time) from analytic_{prvdType}.placement_host_status) \
+              and zone_resource_id= '{zone_resource_id}' \
+                and consolidation_id='{recommendation_id}'  ".format(prvdType=prvdType,
+                                                                     zone_resource_id=zone_resource_id,
+                                                                     recommendation_id=recommendation_id),
+                                            self.engine)
+            data = dict()
+            data['recommendation_id'] = recommendation_id
+            data['before'] = list()
+            data['after'] = list()
+            for index, row in host_status.iterrows():
+                before_data = dict()
+                before_data['label'] = row['host_name']
+                before_data['value'] = row['previous_health_score']
+                after_data = dict()
+                after_data['label'] = row['host_name']
+                after_data['value'] = row['host_health_score']
+                data['before'].append(before_data)
+                data['after'].append(after_data)
+            self.placement_host_status.append(data)
+        self.placement_consolidation_host_status = dict()
+        self.placement_consolidation_host_status['recommendation_list'] = self.placement_consolidation_status
+        self.placement_consolidation_host_status['packed_bubble_chart'] = self.placement_host_status
+        self.placement_consolidation_host_status = json.dumps(self.placement_consolidation_host_status,
+                                                              ensure_ascii=False)
+
+        return self.placement_consolidation_host_status
+
         # self.placement_consolidation_status = json.dumps(self.placement_consolidation_status, ensure_ascii=False)
         # return self.placement_consolidation_status
 
@@ -253,11 +362,39 @@ class dbUtils():
 
         return self.placement_migration_status
 
+    def placement_migration_openstack(self, prvdType, zone_resource_id, recommendation_id):
+
+        migration_status = pd.read_sql_query("\
+                         select * from analytic_{prvdType}.placement_migrations \
+                          where time = (select max(time) from analytic_{prvdType}.placement_migrations) \
+                           and zone_resource_id= '{zone_resource_id}' \
+                             and consolidation_id='{recommendation_id}'  ".format(prvdType=prvdType,
+                                                                                  zone_resource_id=zone_resource_id,
+                                                                                  recommendation_id=recommendation_id),
+                                             self.engine)
+        self.placement_migration_status = list()
+        count = 1
+        for index, row in migration_status.iterrows():
+            data = dict()
+            data['order'] = count
+            count += 1
+            data['vm_name'] = row['vm_name']
+            data['from'] = row['from_host']
+            data['to'] = row['to_host']
+
+            self.placement_migration_status.append(data)
+
+        self.placement_migration_status = json.dumps(self.placement_migration_status,ensure_ascii=False)
+
+        return self.placement_migration_status
+
+
+
 
 # pd.read_sql_query("select * from analytic_{prvdType}.placement_consolidation_status where time = (select max(time) from analytic_{prvdType}.placement_consolidation_status)".format(prvdType='vmware'), db.engine)
 
-db = dbUtils()
-db.placement_consolidation_host('vmware', 'domain-c89')
+# db = dbUtils()
+# db.placement_consolidation_host('vmware', 'domain-c89')
 # db.placement_migration('vmware', 'domain-c89', 'e768b660-0f74-11eb-a6d3-3e22fb024f3a')
 #     if recent=="False":
 #         self.host_status_data = pd.read_sql_query("select * from analytic_vmware.placement_host_status", self.engine)
