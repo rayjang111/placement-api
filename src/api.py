@@ -44,9 +44,9 @@ class CreateUser():
     @app.route('/optimization/arrangement/vm-migration-info')
     def placement_migrations():
         prvdType = request.args.get('provider')
-        cluster_resource_id = request.args.get('cluster-id')
-        zone_resource_id = request.args.get('zone-id')
-        recommendation_id = request.args.get('recommendation-id')
+        cluster_resource_id = request.args.get('cluster_id')
+        zone_resource_id = request.args.get('zone_id')
+        recommendation_id = request.args.get('recommendation_id')
         startdate = request.args.get('from')
         enddate = request.args.get('to')
         try:
